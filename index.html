@@ -324,9 +324,9 @@
 
     function sortOldToNew(images) {
       return images.sort((a, b) => {
-        const ta = a.lastModified ? Date.parse(a.lastModified) : Number.MAX_SAFE_INTEGER;
-        const tb = b.lastModified ? Date.parse(b.lastModified) : Number.MAX_SAFE_INTEGER;
-        if (ta !== tb) return ta - tb;
+        const ta = a.lastModified || "9999-12-31T23:59:59Z";
+        const tb = b.lastModified || "9999-12-31T23:59:59Z";
+        if (ta !== tb) return ta.localeCompare(tb);
         return a.name.localeCompare(b.name);
       });
     }
