@@ -71,6 +71,7 @@
     }
 
     .card .card-inner {
+      position: relative;
       display: block;
       height: 100%;
     }
@@ -82,8 +83,8 @@
       height: 100%;
       object-fit: contain;
       background: transparent;
-      mix-blend-mode: multiply;
-      opacity: 0.9;
+      mix-blend-mode: pin-light;
+      opacity: 0.75;
       -webkit-mask-image: var(--mask-url), linear-gradient(#fff, #fff);
       mask-image: var(--mask-url), linear-gradient(#fff, #fff);
       -webkit-mask-mode: luminance;
@@ -100,6 +101,23 @@
       user-select: none;
     }
 
+    .card-date {
+      position: absolute;
+      left: 0;
+      top: 0;
+      color: var(--date-color, #fff);
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      pointer-events: none;
+      user-select: none;
+      white-space: nowrap;
+    }
+
+    .card-date-char {
+      display: inline-block;
+      line-height: 1;
+    }
+
   </style>
 </head>
 <body>
@@ -110,11 +128,15 @@
   <script>
     const IMAGE_EXT = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".avif"];
     const LOCAL_MANIFEST = "images/images.json";
+    const MASK_DIR = "sourceimages/mask";
+    const RELOAD_INTERVAL_MS = 5000;
+    const DATE_COLORS = ["#ffd166", "#ef476f", "#06d6a0", "#118ab2", "#f7fff7", "#ff9f1c", "#e4c1f9"];
     const FALLBACK_MASKS = [
-      "sourceimages/mask/mask_01.jpg",
-      "sourceimages/mask/mask_02.jpg",
-      "sourceimages/mask/mask_03.jpg"
+      `${MASK_DIR}/mask_01.jpg`,
+      `${MASK_DIR}/mask_02.jpg`,
+      `${MASK_DIR}/mask_03.jpg`
     ];
+    let lastRenderKey = "";
 
     function isImageFile(name) {
       const lower = name.toLowerCase();
@@ -124,6 +146,29 @@
     function pickRandom(items) {
       if (!Array.isArray(items) || items.length === 0) return "";
       return items[Math.floor(Math.random() * items.length)];
+    }
+
+    function formatDateYMD(dateValue) {
+      const parsed = dateValue ? new Date(dateValue) : new Date();
+      const date = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+      const yyyy = String(date.getFullYear());
+      const mm = String(date.getMonth() + 1).padStart(2, "0");
+      const dd = String(date.getDate()).padStart(2, "0");
+      return `${yyyy} ${mm} ${dd}`;
+    }
+
+    function randomInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    function buildRandomDateHtml(dateText) {
+      return dateText
+        .split("")
+        .map((char) => {
+          const size = randomInt(14, 34);
+          return `<span class="card-date-char" style="font-size: ${size}px;">${char}</span>`;
+        })
+        .join("");
     }
 
     async function loadLocalManifest() {
@@ -167,19 +212,43 @@
         .sort((a, b) => a.name.localeCompare(b.name));
     }
 
+    async function loadMasksFromGitHubApi() {
+      const owner = "GeosephLien";
+      const repo = "Image_Source";
+      const api = `https://api.github.com/repos/${owner}/${repo}/contents/${MASK_DIR}`;
+      const res = await fetch(api, {
+        cache: "no-store",
+        headers: { Accept: "application/vnd.github+json" }
+      });
+      if (!res.ok) throw new Error(`Mask API ${res.status}`);
+      const files = await res.json();
+      return files
+        .filter(item => item.type === "file" && isImageFile(item.name))
+        .map(item => `${MASK_DIR}/${item.name}`)
+        .sort((a, b) => a.localeCompare(b));
+    }
+
+    function applyCardOverlap(gallery) {
+      const cards = gallery.querySelectorAll(".card");
+      cards.forEach((card) => {
+        card.style.marginLeft = "0";
+      });
+    }
+
     async function loadImages() {
       const status = document.getElementById("status");
       const gallery = document.getElementById("gallery");
-
-      function applyCardOverlap() {
-        const cards = gallery.querySelectorAll(".card");
-        cards.forEach((card, index) => {
-          card.style.marginLeft = index === 0 ? "0" : `${-card.offsetWidth * 0.5}px`;
-        });
-      }
-
       try {
-        const masks = FALLBACK_MASKS;
+        let masks;
+        let maskSource = "GitHub API";
+        try {
+          masks = await loadMasksFromGitHubApi();
+          if (masks.length === 0) throw new Error("No masks found");
+        } catch {
+          masks = FALLBACK_MASKS;
+          maskSource = "fallback";
+        }
+
         let images;
         let source = "images/images.json";
         try {
@@ -189,7 +258,15 @@
           source = "GitHub API fallback";
         }
 
+        const renderKey = JSON.stringify({
+          images: images.map(item => `${item.path}|${item.lastModified || ""}`),
+          masks
+        });
+        if (renderKey === lastRenderKey) return;
+
         if (images.length === 0) {
+          gallery.innerHTML = "";
+          lastRenderKey = renderKey;
           if (status) status.textContent = "No images found in images/.";
           return;
         }
@@ -197,22 +274,43 @@
         const cards = images.map(item => {
           const url = item.path;
           const maskUrl = pickRandom(masks);
+          const dateLabel = formatDateYMD(item.lastModified);
+          const dateColor = pickRandom(DATE_COLORS) || "#ffffff";
+          const dateX = randomInt(5, 75);
+          const dateY = randomInt(8, 86);
+          const dateHtml = buildRandomDateHtml(dateLabel);
           return `
             <article class="card">
               <div class="card-inner">
                 <img src="${url}" alt="${item.name}" loading="lazy" style="--mask-url: url('${maskUrl}');" />
+                <span class="card-date" style="--date-color: ${dateColor}; left: ${dateX}%; top: ${dateY}%;">${dateHtml}</span>
               </div>
             </article>
           `;
         });
 
         gallery.innerHTML = cards.join("");
-        applyCardOverlap();
-        window.addEventListener("resize", applyCardOverlap);
-        if (status) status.textContent = `Loaded ${images.length} images (${source})`;
+        applyCardOverlap(gallery);
+        lastRenderKey = renderKey;
+        if (status) status.textContent = `Loaded ${images.length} images (${source}), ${masks.length} masks (${maskSource})`;
       } catch (err) {
         if (status) status.textContent = `Load failed: ${err.message}`;
       }
+    }
+
+    function setupAutoFillBehavior() {
+      const gallery = document.getElementById("gallery");
+      gallery.addEventListener("error", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLImageElement)) return;
+        const card = target.closest(".card");
+        if (!card) return;
+        card.remove();
+        applyCardOverlap(gallery);
+      }, true);
+
+      window.addEventListener("resize", () => applyCardOverlap(gallery));
+      setInterval(loadImages, RELOAD_INTERVAL_MS);
     }
 
     function syncBackgroundWithScroll() {
@@ -327,6 +425,7 @@
 
     syncBackgroundWithScroll();
     enableMouseDragScroll();
+    setupAutoFillBehavior();
     loadImages();
   </script>
 </body>
