@@ -18,15 +18,18 @@
 
     body {
       margin: 0;
-      padding: 24px;
+      padding: 16px;
       font-family: "Segoe UI", "Noto Sans TC", sans-serif;
       background: linear-gradient(180deg, #eef2f6 0%, var(--bg) 100%);
       color: var(--text);
     }
 
     .wrap {
-      max-width: 1200px;
-      margin: 0 auto;
+      max-width: 100%;
+      margin: 0;
+      height: calc(100vh - 32px);
+      display: flex;
+      flex-direction: column;
     }
 
     h1 {
@@ -41,40 +44,42 @@
     }
 
     .gallery {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-      gap: 14px;
-      align-items: start;
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 12px;
+      align-items: stretch;
+      overflow-x: auto;
+      overflow-y: hidden;
+      height: 100%;
+      padding-bottom: 4px;
     }
 
     .card {
+      position: relative;
+      flex: 0 0 auto;
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 12px;
       overflow: hidden;
       box-shadow: var(--shadow);
+      height: 100%;
+    }
+
+    .card a {
+      display: block;
+      height: 100%;
     }
 
     .card img {
       display: block;
-      width: 100%;
-      height: 180px;
-      object-fit: cover;
+      width: auto;
+      height: 100%;
+      object-fit: contain;
       background: #f0f3f7;
     }
 
-    .name {
-      padding: 10px 12px;
-      font-size: 13px;
-      color: #304050;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      border-top: 1px solid var(--border);
-    }
-
     .status {
-      margin-top: 14px;
+      margin-top: 8px;
       color: var(--muted);
       font-size: 14px;
     }
@@ -89,47 +94,68 @@
   </main>
 
   <script>
-    const DEFAULT_OWNER = "GeosephLien";
-    const DEFAULT_REPO = "Image_Source";
     const IMAGE_EXT = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".avif"];
-
-    function detectRepoFromLocation() {
-      const host = window.location.hostname;
-      const pathParts = window.location.pathname.split("/").filter(Boolean);
-
-      if (host.endsWith(".github.io")) {
-        return {
-          owner: host.split(".")[0],
-          repo: pathParts[0] || DEFAULT_REPO
-        };
-      }
-
-      return { owner: DEFAULT_OWNER, repo: DEFAULT_REPO };
-    }
+    const LOCAL_MANIFEST = "images/images.json";
 
     function isImageFile(name) {
       const lower = name.toLowerCase();
       return IMAGE_EXT.some(ext => lower.endsWith(ext));
     }
 
-    function buildImageUrl(owner, repo, path) {
-      return `https://raw.githubusercontent.com/${owner}/${repo}/main/${path}`;
+    async function loadLocalManifest() {
+      const res = await fetch(LOCAL_MANIFEST, { cache: "no-store" });
+      if (!res.ok) throw new Error(`Manifest ${res.status}`);
+      const raw = await res.text();
+      const data = JSON.parse(raw.replace(/^\uFEFF/, ""));
+      if (!Array.isArray(data)) throw new Error("Invalid manifest format");
+      return data
+        .filter(item => item && typeof item.path === "string" && isImageFile(item.path))
+        .map(item => ({
+          name: item.name || item.path.split("/").pop(),
+          path: item.path,
+          lastModified: item.lastModified || ""
+        }));
+    }
+
+    function sortOldToNew(images) {
+      return images.sort((a, b) => {
+        const ta = a.lastModified ? Date.parse(a.lastModified) : Number.MAX_SAFE_INTEGER;
+        const tb = b.lastModified ? Date.parse(b.lastModified) : Number.MAX_SAFE_INTEGER;
+        if (ta !== tb) return ta - tb;
+        return a.name.localeCompare(b.name);
+      });
+    }
+
+    async function loadFromGitHubApi() {
+      const owner = "GeosephLien";
+      const repo = "Image_Source";
+      const api = `https://api.github.com/repos/${owner}/${repo}/contents/images`;
+      const res = await fetch(api, { headers: { Accept: "application/vnd.github+json" } });
+      if (!res.ok) throw new Error(`GitHub API ${res.status}`);
+      const files = await res.json();
+      return files
+        .filter(item => item.type === "file" && isImageFile(item.name))
+        .map(item => ({
+          name: item.name,
+          path: `images/${item.name}`,
+          lastModified: ""
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
     }
 
     async function loadImages() {
-      const { owner, repo } = detectRepoFromLocation();
-      const api = `https://api.github.com/repos/${owner}/${repo}/contents/images`;
       const status = document.getElementById("status");
       const gallery = document.getElementById("gallery");
 
       try {
-        const res = await fetch(api, { headers: { Accept: "application/vnd.github+json" } });
-        if (!res.ok) throw new Error(`GitHub API ${res.status}`);
-        const files = await res.json();
-
-        const images = files
-          .filter(item => item.type === "file" && isImageFile(item.name))
-          .sort((a, b) => a.name.localeCompare(b.name));
+        let images;
+        let source = "images/images.json";
+        try {
+          images = sortOldToNew(await loadLocalManifest());
+        } catch {
+          images = await loadFromGitHubApi();
+          source = "GitHub API fallback";
+        }
 
         if (images.length === 0) {
           status.textContent = "No images found in images/.";
@@ -137,19 +163,18 @@
         }
 
         const cards = images.map(item => {
-          const url = buildImageUrl(owner, repo, item.path);
+          const url = item.path;
           return `
             <article class="card">
               <a href="${url}" target="_blank" rel="noopener noreferrer">
                 <img src="${url}" alt="${item.name}" loading="lazy" />
               </a>
-              <div class="name" title="${item.name}">${item.name}</div>
             </article>
           `;
         });
 
         gallery.innerHTML = cards.join("");
-        status.textContent = `Loaded ${images.length} images (${owner}/${repo})`;
+        status.textContent = `Loaded ${images.length} images (${source})`;
       } catch (err) {
         status.textContent = `Load failed: ${err.message}`;
       }
