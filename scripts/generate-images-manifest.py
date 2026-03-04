@@ -3,6 +3,7 @@ import argparse
 import json
 import subprocess
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -26,6 +27,13 @@ def git_last_modified_iso(path: Path) -> str:
         return ""
 
 
+def file_modified_iso(path: Path) -> str:
+    try:
+        return datetime.fromtimestamp(path.stat().st_mtime).astimezone().isoformat(timespec="seconds")
+    except Exception:
+        return ""
+
+
 def is_image(path: Path) -> bool:
     return path.is_file() and path.suffix.lower() in IMAGE_EXTS
 
@@ -43,7 +51,7 @@ def collect_entries() -> List[Dict[str, str]]:
             {
                 "name": path.name,
                 "path": rel,
-                "lastModified": git_last_modified_iso(path),
+                "lastModified": git_last_modified_iso(path) or file_modified_iso(path),
             }
         )
 
