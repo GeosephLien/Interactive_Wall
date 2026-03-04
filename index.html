@@ -6,8 +6,8 @@
   <title>Image Gallery</title>
   <style>
     @font-face {
-      font-family: "Street Soul";
-      src: url("fonts/street soul.ttf") format("truetype");
+      font-family: "STREET MARKER";
+      src: url("fonts/STREET MARKER.ttf") format("truetype");
       font-display: swap;
     }
 
@@ -71,7 +71,7 @@
       background: transparent;
       border: 0;
       border-radius: 0;
-      overflow: hidden;
+      overflow: visible;
       box-shadow: none;
       height: 100%;
     }
@@ -108,32 +108,41 @@
     }
 
     .card-date {
-      --date-mask-url: none;
       position: absolute;
       left: 0;
       top: 0;
-      font-family: "Street Soul", "Noto Sans TC", sans-serif;
+      transform: rotate(var(--date-rotate, 0deg));
+      display: inline-block;
+      font-family: "STREET MARKER", "Noto Sans TC", sans-serif;
+      font-style: italic;
       color: var(--date-color, #fff);
-      mix-blend-mode: multiply;
-      opacity: 0.8;
-      -webkit-mask-image: var(--date-mask-url);
-      mask-image: var(--date-mask-url);
-      -webkit-mask-repeat: no-repeat;
-      mask-repeat: no-repeat;
-      -webkit-mask-position: center;
-      mask-position: center;
-      -webkit-mask-size: 100% 100%;
-      mask-size: 100% 100%;
+      mix-blend-mode: pin-light;
+      opacity: 0.6;
       font-weight: 700;
       letter-spacing: 0.12em;
       pointer-events: none;
       user-select: none;
+    }
+
+    .card-date-main {
+      display: block;
       white-space: nowrap;
+    }
+
+    .card-signature {
+      display: block;
+      margin-top: 4px;
+      font-size: 20px;
+      line-height: 1;
+      white-space: nowrap;
+      text-align: right;
+      transform: translateX(26%);
     }
 
     .card-date-char {
       display: inline-block;
       line-height: 1;
+      transform: translateY(var(--char-base-y, 0px));
     }
 
   </style>
@@ -148,6 +157,8 @@
     const LOCAL_MANIFEST = "images/images.json";
     const MASK_DIR = "sourceimages/mask";
     const RELOAD_INTERVAL_MS = 5000;
+    const SIGN_FIRST = ["Ari", "Jax", "Nova", "Kiro", "Milo", "Zed", "Niko", "Rae", "Luna", "Vex"];
+    const SIGN_LAST = ["Lane", "Stone", "Flux", "Ink", "Rift", "Crow", "Drift", "Vale", "Ghost", "Skye"];
     const FALLBACK_MASKS = [
       `${MASK_DIR}/mask_01.jpg`,
       `${MASK_DIR}/mask_02.jpg`,
@@ -172,7 +183,7 @@
       const mm = monthNames[date.getMonth()];
       const dd = String(date.getDate()).padStart(2, "0");
       const yyyy = String(date.getFullYear());
-      return `${mm}/${dd}/${yyyy}`;
+      return `${mm}${dd}${yyyy}`;
     }
 
     function randomInt(min, max) {
@@ -182,13 +193,56 @@
     function buildRandomDateHtml(dateText) {
       return dateText
         .split("")
-        .map((char, index, chars) => {
-          const prev = index > 0 ? chars[index - 1] : "";
-          const isFirstCharOfPart = /[A-Za-z0-9]/.test(char) && (index === 0 || prev === "/");
-          const size = isFirstCharOfPart ? 68 : 40;
-          return `<span class="card-date-char" style="font-size: ${size}px;">${char}</span>`;
+        .map((char) => {
+          const baseY = randomInt(-12, 12);
+          return `<span class="card-date-char" style="font-size: 40px; --char-base-y: ${baseY}px;">${char}</span>`;
         })
         .join("");
+    }
+
+    function buildRandomSignature() {
+      return `${pickRandom(SIGN_FIRST)} ${pickRandom(SIGN_LAST)}`;
+    }
+
+    function pickDatePosition() {
+      // Avoid the center block (roughly 30%-70% in both axes)
+      for (let i = 0; i < 20; i += 1) {
+        const x = randomInt(5, 85);
+        const y = randomInt(8, 88);
+        const inCenterX = x >= 30 && x <= 70;
+        const inCenterY = y >= 30 && y <= 70;
+        if (!(inCenterX && inCenterY)) {
+          return { x, y };
+        }
+      }
+      // Fallback to edges
+      return {
+        x: randomInt(5, 20),
+        y: randomInt(8, 88)
+      };
+    }
+
+    function keepDateLabelsVisible(gallery) {
+      const cards = gallery.querySelectorAll(".card");
+      cards.forEach((card) => {
+        const inner = card.querySelector(".card-inner");
+        if (!(inner instanceof HTMLElement)) return;
+        const labels = card.querySelectorAll(".card-date");
+        labels.forEach((label) => {
+          if (!(label instanceof HTMLElement)) return;
+          const leftPercent = parseFloat(label.style.left) || 0;
+          const topPercent = parseFloat(label.style.top) || 0;
+          const initialLeft = inner.clientWidth * (leftPercent / 100);
+          const initialTop = inner.clientHeight * (topPercent / 100);
+          const padding = 12;
+          const maxLeft = Math.max(0, inner.clientWidth - label.offsetWidth - padding);
+          const maxTop = Math.max(0, inner.clientHeight - label.offsetHeight - padding);
+          const nextLeft = Math.min(maxLeft, Math.max(padding, initialLeft));
+          const nextTop = Math.min(maxTop, Math.max(padding, initialTop));
+          label.style.left = `${nextLeft}px`;
+          label.style.top = `${nextTop}px`;
+        });
+      });
     }
 
     function pickColorFromImage(img) {
@@ -233,12 +287,16 @@
       const cards = gallery.querySelectorAll(".card");
       cards.forEach((card) => {
         const img = card.querySelector("img");
-        const dateEl = card.querySelector(".card-date");
-        if (!(img instanceof HTMLImageElement) || !(dateEl instanceof HTMLElement)) return;
+        if (!(img instanceof HTMLImageElement)) return;
+        const labels = card.querySelectorAll(".card-date");
+        if (!labels.length) return;
 
         const setColor = () => {
           const sampledColor = pickColorFromImage(img);
-          if (sampledColor) dateEl.style.setProperty("--date-color", sampledColor);
+          if (!sampledColor) return;
+          labels.forEach((label) => {
+            if (label instanceof HTMLElement) label.style.setProperty("--date-color", sampledColor);
+          });
         };
 
         if (img.complete && img.naturalWidth > 0) {
@@ -352,16 +410,19 @@
         const cards = images.map(item => {
           const url = item.path;
           const maskUrl = pickRandom(masks);
-          const dateMaskUrl = pickRandom(masks);
           const dateLabel = formatDateLabel(item.lastModified);
-          const dateX = randomInt(5, 75);
-          const dateY = randomInt(8, 86);
+          const datePos = pickDatePosition();
+          const dateRotate = randomInt(-20, 20);
+          const signature = buildRandomSignature();
           const dateHtml = buildRandomDateHtml(dateLabel);
           return `
             <article class="card">
               <div class="card-inner">
                 <img src="${url}" alt="${item.name}" loading="lazy" style="--mask-url: url('${maskUrl}');" />
-                <span class="card-date" style="--date-mask-url: url('${dateMaskUrl}'); left: ${dateX}%; top: ${dateY}%;">${dateHtml}</span>
+                <span class="card-date" style="--date-rotate: ${dateRotate}deg; left: ${datePos.x}%; top: ${datePos.y}%;">
+                  <span class="card-date-main">${dateHtml}</span>
+                  <span class="card-signature">${signature}</span>
+                </span>
               </div>
             </article>
           `;
@@ -369,6 +430,7 @@
 
         gallery.innerHTML = cards.join("");
         applyCardOverlap(gallery);
+        keepDateLabelsVisible(gallery);
         applyDateColorsFromImages(gallery);
         lastRenderKey = renderKey;
         if (status) status.textContent = `Loaded ${images.length} images (${source}), ${masks.length} masks (${maskSource})`;
@@ -388,7 +450,10 @@
         applyCardOverlap(gallery);
       }, true);
 
-      window.addEventListener("resize", () => applyCardOverlap(gallery));
+      window.addEventListener("resize", () => {
+        applyCardOverlap(gallery);
+        keepDateLabelsVisible(gallery);
+      });
       setInterval(loadImages, RELOAD_INTERVAL_MS);
     }
 
