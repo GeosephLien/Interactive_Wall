@@ -89,10 +89,10 @@
       height: 100%;
       object-fit: contain;
       background: transparent;
-      mix-blend-mode: multiply;
+      mix-blend-mode: pin-light;
       opacity: 0.75;
-      -webkit-mask-image: var(--mask-url), linear-gradient(#fff, #fff);
-      mask-image: var(--mask-url), linear-gradient(#fff, #fff);
+      -webkit-mask-image: var(--mask-url);
+      mask-image: var(--mask-url);
       -webkit-mask-mode: luminance;
       mask-mode: luminance;
       -webkit-mask-repeat: no-repeat;
@@ -101,8 +101,6 @@
       mask-position: center;
       -webkit-mask-size: 100% 100%;
       mask-size: 100% 100%;
-      -webkit-mask-composite: xor;
-      mask-composite: exclude;
       -webkit-user-drag: none;
       user-select: none;
     }
