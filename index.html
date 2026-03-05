@@ -88,6 +88,8 @@
       height: 100%;
       object-fit: contain;
       background: transparent;
+      transform: rotate(var(--img-rotate, 0deg));
+      transform-origin: center center;
       mix-blend-mode: pin-light;
       opacity: 0.75;
       -webkit-mask-image: var(--mask-url, none);
@@ -419,7 +421,10 @@
         const cards = images.map(item => {
           const url = item.path;
           const maskUrl = useMask ? pickRandom(masks) : "";
-          const maskStyle = maskUrl ? ` style="--mask-url: url('${maskUrl}');"` : "";
+          const imgRotate = (Math.random() * 4 - 2).toFixed(2);
+          const imgStyle = maskUrl
+            ? ` style="--mask-url: url('${maskUrl}'); --img-rotate: ${imgRotate}deg;"`
+            : ` style="--img-rotate: ${imgRotate}deg;"`;
           const dateLabel = formatDateLabel(item.lastModified);
           const datePos = pickDatePosition();
           const dateRotate = randomInt(-20, 20);
@@ -428,7 +433,7 @@
           return `
             <article class="card">
               <div class="card-inner">
-                <img src="${url}" alt="${item.name}" loading="lazy"${maskStyle} />
+                <img src="${url}" alt="${item.name}" loading="lazy"${imgStyle} />
                 <span class="card-date" style="--date-rotate: ${dateRotate}deg; left: ${datePos.x}%; top: ${datePos.y}%;">
                   <span class="card-date-main">${dateHtml}</span>
                   <span class="card-signature">${signature}</span>
